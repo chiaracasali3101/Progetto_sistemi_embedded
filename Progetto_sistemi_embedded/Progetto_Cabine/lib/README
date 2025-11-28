@@ -1,0 +1,7 @@
+Sistema di controllo cabine in spiaggia.
+L'utente sceglie un codice da 4 cifre e lo inserisce su un tastierino numerico.
+La cabina si blocca grazie ad un servomotore.
+Quando l'utente torna, se inserisce il codice giusto, la cabina si sblocca.
+Se inserisce il codice sbagliato, la cabina rimane bloccata.
+Quando la cabina è bloccata, si accende un led rosso.
+Quando la cabina è sbloccata, si accende un led verde.

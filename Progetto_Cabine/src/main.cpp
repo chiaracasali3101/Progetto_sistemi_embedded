@@ -2,7 +2,7 @@
 #include <Keypad.h>
 #include <ESP32Servo.h>
 
-// --- PIN FUNZIONANTI (VERIFICATI) ---
+// DICHIARAZIONE PIN  
 const int PIN_LED_ROSSO = 23;
 const int PIN_LED_VERDE = 25;
 const int PIN_SERVO = 13;
@@ -108,8 +108,6 @@ void loop() {
         if (key >= '0' && key <= '9') {
           if (inputCorrente.length() < 4) {
             inputCorrente += key;
-            // Piccolo feedback visivo: spegne il led rosso un attimo quando premi
-            digitalWrite(PIN_LED_ROSSO, LOW); delay(50); digitalWrite(PIN_LED_ROSSO, HIGH);
           }
         }
       }

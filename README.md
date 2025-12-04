@@ -1,15 +1,16 @@
-# Progetto Sistemi Embedded e IoT – Sistema di Apertura Cabine con Tastierino e Servo
+# Progetto Sistemi Embedded e IoT – Sistema di Apertura Cabine con Tastierino e Servo (ESP32)
 
 ## Descrizione Generale
 
 Questo progetto implementa un sistema elettronico per la gestione dell'apertura e chiusura di una cabina (o più cabine) utilizzando:
 
-* **Arduino UNO**
+* **ESP32 DevKit**
 * **Tastierino numerico 4x4 (Keypad)**
 * **Servo motore** per il meccanismo di blocco/sblocco
 * **LED** per indicazione dello stato (bloccato/sbloccato)
 
-Il sistema permette all'utente di **impostare un codice personalizzato all'avvio** e di utilizzare quel codice per aprire la cabina. In qualsiasi momento è possibile richiudere la cabina tramite il tasto `*` del tastierino.
+Il sistema permette all'utente di **impostare un codice personalizzato all'avvio** e di utilizzare quel codice per aprire la cabina.
+In qualsiasi momento è possibile richiudere la cabina tramite il tasto `*` del tastierino.
 
 Il progetto simula perfettamente il funzionamento di cabine numerate come quelle presenti in spiagge, stabilimenti balneari, depositi o magazzini.
 
@@ -19,18 +20,18 @@ Il progetto simula perfettamente il funzionamento di cabine numerate come quelle
 
 ### Impostazione iniziale del codice
 
-Quando l'Arduino viene acceso:
+Quando l’ESP32 viene acceso:
 
 * Il **LED rosso** si accende → la cabina è *in stato bloccato*.
 * Il sistema entra in **modalità setup del codice**.
-* L'utente deve inserire **4 cifre** tramite tastierino.
+* L’utente deve inserire **4 cifre** tramite tastierino.
 * Una volta inserite, premere **`#` per confermare**.
 
 Se il codice ha esattamente 4 cifre:
 
 * Il codice viene salvato come *codice segreto*
 * Il LED verde lampeggia 3 volte → *conferma visiva*
-* Il sistema passa alla modalità di funzionamento normale
+* Il sistema passa alla modalità operativa normale
 
 Se il codice è incompleto, il LED rosso lampeggia per segnalare l’errore.
 
@@ -45,7 +46,7 @@ Dopo aver impostato il codice, il sistema è pronto all'uso.
 Per sbloccare la cabina:
 
 * Inserisci le **4 cifre del codice corretto**
-* Se il codice è giusto:
+* Se il codice è corretto:
 
   * Il **LED verde** si accende
   * Il **LED rosso** si spegne
@@ -57,8 +58,8 @@ Per sbloccare la cabina:
 Se il codice inserito è sbagliato:
 
 * Il LED rosso lampeggia 3 volte
-* La cabina rimane bloccata
-* Il servo rimane nella posizione di chiusura
+* La cabina rimane chiusa
+* Il servo resta nella posizione di blocco
 
 ### Chiusura manuale della cabina
 
@@ -67,13 +68,13 @@ Premendo il tasto **`*`** in qualsiasi momento:
 * Il sistema blocca la cabina
 * Il LED rosso si accende
 * Il LED verde si spegne
-* Il servo torna nella posizione di blocco
+* Il servo torna nella posizione di chiusura
 
 ---
 
 ## Componenti Utilizzati
 
-* **Arduino UNO R3**
+* **ESP32 DevKit / ESP32-WROOM**
 * **Tastierino a membrana 4x4**
 * **Servo motore** (tipo SG90 o simile)
 * **LED rosso + resistenza 220 Ω**
@@ -83,26 +84,28 @@ Premendo il tasto **`*`** in qualsiasi momento:
 
 ---
 
-## Collegamenti Principali (Pinout)
+## Collegamenti Principali (Pinout con ESP32)
 
 ### Keypad 4x4
 
-* R1 → D5
-* R2 → D4
-* R3 → D3
-* R4 → D2
-* C1 → A3
-* C2 → A2
-* C3 → A1
-* C4 → A0
+I pin possono variare, qui una configurazione consigliata:
+
+* R1 → GPIO 32
+* R2 → GPIO 33
+* R3 → GPIO 25
+* R4 → GPIO 26
+* C1 → GPIO 27
+* C2 → GPIO 14
+* C3 → GPIO 12
+* C4 → GPIO 13
 
 ### Servo
 
-* PWM → D6
+* Segnale → GPIO 18
 * VCC → 5V
-* GND → GND
+* GND → GND (comune con ESP32)
 
 ### LED
 
-* LED Rosso → D13 (catodo a GND via resistenza)
-* LED Verde → D12 (catodo a GND via resistenza)
+* LED Rosso → GPIO 23 (catodo verso GND tramite resistenza)
+* LED Verde → GPIO 22 (catodo verso GND tramite resistenza)

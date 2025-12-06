@@ -1,90 +1,175 @@
-## Progetto Sistemi Embedded e IoT – Sistema di Apertura Cabina con Tastierino e Servo (ESP32)
+# 📝**Sistema di Apertura Cabina con Tastierino, Servo ed Interfaccia IoT (ESP32 + MQTT)**
 
 ## Descrizione Generale
 
-Il progetto implementa un sistema elettronico per **bloccare e sbloccare una cabina** tramite:
+Il progetto realizza un **sistema di controllo accessi per una cabina** utilizzando:
 
 * **ESP32 DevKit**
-* **Tastierino 4x4**
-* **Servo motore** per il meccanismo di apertura/chiusura
-* **LED rosso e verde** per indicare lo stato della cabina
+* **Tastierino 4×4**
+* **Servo motore** per apertura/chiusura
+* **LED rosso e verde** come indicatori di stato
+* **Connessione Wi-Fi**
+* **Cloud MQTT (HiveMQ Cloud)**
+* **Dashboard Web** per monitoraggio e controllo remoto
 
-All’avvio l’utente deve **impostare un codice di 4 cifre**, che diventa la password di sblocco.
-Durante l’uso normale, l’inserimento della password corretta apre la cabina; il tasto `*` la richiude in qualsiasi momento.
+La cabina può essere aperta:
 
----
+* **localmente**, inserendo un codice numerico sul tastierino
+* **da remoto**, tramite un sito web collegato al broker MQTT
 
-## Funzionamento del Sistema
-
-### Impostazione iniziale del codice
-
-Quando l’ESP32 si accende:
-
-* Viene eseguita la **chiusura iniziale** della cabina (servo a 0°)
-* Il **LED rosso si accende**
-* Il **LED verde lampeggia 1 volta** come segnale di avvio
-* Il sistema entra nella **fase di setup della password**
-
-L’utente deve:
-
-1. Inserire **4 cifre**
-2. Premere **`#`** per confermare
-
-Se il codice è valido:
-
-* Viene salvato in memoria volatile (`codiceSegreto`)
-* Il LED verde esegue un **lampeggio rapido di conferma** (feedback positivo)
-* Il sistema passa alla modalità operativa
-
-Se il codice è errato (meno di 4 cifre):
-
-* Il LED rosso lampeggia (feedback negativo)
-* L’inserimento viene resettato
-
-L’utente può premere `*` per cancellare l’input.
+La chiusura può avvenire localmente con `*` o da remoto tramite comando MQTT.
 
 ---
 
-## Modalità di utilizzo normale
+# **Flusso di Avvio del Sistema**
 
-### Sblocco della cabina
+Quando l’ESP32 viene acceso:
 
-Per aprire la cabina:
+1. Inizializza i pin digitali, il servo e il tastierino
+2. Si connette alla rete **Wi-Fi (Wokwi-GUEST)**
+3. Si connette al broker **HiveMQ Cloud** tramite MQTT over TLS
+4. Esegue la **chiusura iniziale della cabina** e pubblica lo stato su MQTT
+5. Mostra il messaggio:
+   **"INSERISCI NUOVO CODICE (4 cifre) E PREMI #”**
 
-1. Inserire le **4 cifre** del codice
+---
+
+# **Impostazione del codice segreto**
+
+Alla prima accensione è necessario impostare un codice a 4 cifre.
+
+Procedura:
+
+1. L’utente inserisce **4 cifre**
+2. Premendo **`#`**:
+
+   * Se il codice è valido → salvato in `codiceSegreto`
+   * LED verde lampeggia (feedback positivo)
+   * Il sistema esce dalla fase di setup (`inFaseDiSetup = false`)
+3. Se il codice è troppo corto → errore con LED rosso (feedback negativo)
+
+Premendo `*` durante il setup, l’inserimento viene cancellato.
+
+---
+
+
+## Apertura cabina
+
+1. L’utente inserisce le 4 cifre del codice
 2. Se corrette:
 
-   * Il servo ruota a **90°** → cabina aperta
+   * Servo → **90°** → cabina aperta
    * LED verde acceso
-   * LED rosso spento
+   * Stato pubblicato su MQTT (`cabina/stato`)
 
-Se il codice è errato:
+## Codice errato
 
-* Il LED rosso lampeggia 2 volte (feedback negativo)
-* L’input viene resettato
+* LED rosso lampeggia
+* Input resettato
+* Evento pubblicato su MQTT
 
-### Chiusura manuale della cabina
+## Chiusura cabina (manuale)
 
-Premendo **`*`** in qualsiasi momento:
+Premendo:
 
-* La cabina viene chiusa (servo a 0°)
+* `*` → chiude la cabina
 * LED rosso acceso
-* LED verde spento
-* L’input corrente viene cancellato
+* Stato pubblicato su MQTT
 
-Premendo **`#`** nella modalità operativa:
-
-* L’input viene semplicemente resettato, senza effetti sulla cabina
+Premendo `#` durante la modalità operativa viene solo resettato l’input.
 
 ---
 
-## Componenti Utilizzati
+# 🌐 **Funzionalità IoT tramite MQTT (HiveMQ Cloud)**
 
-* **ESP32 DevKit C**
-* **Keypad 4×4**
-* **Servo SG90 (o compatibile)**
-* **LED rosso (con resistenza da 220 Ω)**
-* **LED verde (con resistenza da 220 Ω)**
-* Breadboard e cavi jumper
+Il sistema utilizza un broker cloud:
+
+```
+HiveMQ Cloud – MQTT over TLS (porta 8883)
+```
+
+L’ESP32:
+
+### Pubblica lo stato della cabina
+
+Topic:
+
+```
+cabina/stato
+```
+
+Payload (JSON):
+
+```json
+{
+  "inFaseDiSetup": false,
+  "cabinaAperta": true
+}
+```
+
+Invio dello stato:
+
+* **immediato** quando cambia apertura/chiusura
+* ogni **30 secondi** (heartbeat)
+* dopo ogni riconnessione MQTT
+
+### Riceve comandi remoti
+
+Topic:
+
+```
+cabina/comandi
+```
+
+Messaggi supportati:
+
+* `"APRI"` → servo a 90°, LED verde ON
+* `"CHIUDI"` → servo a 0°, LED rosso ON
+
+Questi comandi possono essere inviati da:
+
+* Web Client di HiveMQ
+* Sito web sviluppato per il progetto
+* Qualsiasi client MQTT
+
+---
+
+# 🖥️ **Dashboard Web – Controllo e Monitoraggio Remoto**
+
+È stato sviluppato un file HTML che permette:
+
+## Monitorare lo stato della cabina in tempo reale
+
+* Cabina aperta / chiusa
+* Modalità setup / operativa
+* Log degli eventi
+* Stato connessione MQTT
+
+## Controllare la cabina da remoto
+
+Due pulsanti:
+
+* **Apri cabina**
+* **Chiudi cabina**
+
+Questi pulsanti inviano comandi MQTT (`APRI` / `CHIUDI`) all’ESP32.
+
+La dashboard utilizza:
+
+* **mqtt.js** (comunicazione MQTT via WebSocket)
+* Collegamento a HiveMQ Cloud via `wss://...:8884/mqtt`
+* Logica reattiva aggiornata automaticamente quando arrivano messaggi MQTT
+
+
+---
+
+# 🔩 **Componenti Utilizzati (Hardware)**
+
+* ESP32 DevKit C
+* Tastierino 4×4
+* Servo SG90
+* LED rosso + resistenza 220 Ω
+* LED verde + resistenza 220 Ω
+* Breadboard e jumper
 
 ---

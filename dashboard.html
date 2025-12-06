@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Monitor Cabina - HiveMQ</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      background: radial-gradient(circle at top, #e0f2ff, #f5f5f5);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      max-width: 520px;
+      width: 100%;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px 28px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.6rem;
+      text-align: center;
+    }
+    .subtitle {
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      color: #666;
+      text-align: center;
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      gap: 8px;
+    }
+    .pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eef2ff;
+      color: #3730a3;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-ok {
+      background: #16a34a;
+    }
+    .dot-warn {
+      background: #facc15;
+    }
+    .dot-error {
+      background: #dc2626;
+    }
+
+    .cabina-state {
+      text-align: center;
+      margin: 18px 0;
+      font-size: 1.9rem;
+      font-weight: 600;
+    }
+    .cabina-open {
+      color: #16a34a;
+    }
+    .cabina-closed {
+      color: #dc2626;
+    }
+    .setup-text {
+      text-align: center;
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+    }
+    .setup-on {
+      color: #f59e0b;
+    }
+    .setup-off {
+      color: #4b5563;
+    }
+
+    .small-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #9ca3af;
+      margin-top: 4px;
+      text-align: center;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin: 10px 0 16px;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.08s ease, box-shadow 0.08s ease, opacity 0.2s;
+    }
+    .btn:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: none;
+    }
+    .btn-open {
+      background: #16a34a;
+      color: white;
+      box-shadow: 0 4px 10px rgba(22, 163, 74, 0.5);
+    }
+    .btn-close {
+      background: #dc2626;
+      color: white;
+      box-shadow: 0 4px 10px rgba(220, 38, 38, 0.5);
+    }
+    .btn[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .log-box {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f3f4f6;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+        Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.8rem;
+      max-height: 120px;
+      overflow-y: auto;
+      color: #374151;
+    }
+    .log-line {
+      white-space: pre-wrap;
+      margin: 0;
+    }
+
+    .config-info {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #9ca3af;
+    }
+    .config-info code {
+      font-size: 0.75rem;
+      background: #e5e7eb;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 20px;
+      }
+      h1 {
+        font-size: 1.3rem;
+      }
+      .cabina-state {
+        font-size: 1.6rem;
+      }
+      .controls {
+        flex-direction: column;
+      }
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Monitor Cabina ESP32</h1>
+      <p class="subtitle">Dati in tempo reale via HiveMQ Cloud (MQTT)</p>
+
+      <div class="status-row">
+        <div id="conn-pill" class="pill">
+          <span id="conn-dot" class="dot dot-error"></span>
+          <span id="conn-text">Disconnesso</span>
+        </div>
+      </div>
+
+      <p class="small-label">Stato cabina</p>
+      <div id="cabina-state" class="cabina-state cabina-closed">
+        In attesa di dati...
+      </div>
+
+      <p class="small-label">Modalità</p>
+      <div id="setup-text" class="setup-text setup-off">
+        -
+      </div>
+
+      <!-- CONTROLLI REMOTI -->
+      <p class="small-label">Controllo remoto</p>
+      <div class="controls">
+        <button id="btn-open" class="btn btn-open" onclick="sendCommand('APRI')" disabled>
+          Apri cabina
+        </button>
+        <button id="btn-close" class="btn btn-close" onclick="sendCommand('CHIUDI')" disabled>
+          Chiudi cabina
+        </button>
+      </div>
+
+      <div class="log-box" id="log-box"></div>
+
+      <div class="config-info">
+        Topic stato: <code>cabina/stato</code> &nbsp;•&nbsp;
+        Topic comandi: <code>cabina/comandi</code><br />
+        I pulsanti inviano comandi MQTT all'ESP32
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===================== CONFIGURAZIONE =====================
+    const MQTT_HOST = "9e575485d8be46f0b26fc67805967c19.s1.eu.hivemq.cloud";
+    const MQTT_PORT = 8884; // porta WebSocket TLS del cluster 
+    const MQTT_USERNAME = "ProgettoEmbedded"; // <-- STESSO username dell'ESP32
+    const MQTT_PASSWORD = "Password1";        // <-- STESSA password dell'ESP32
+    const MQTT_TOPIC_STATO   = "cabina/stato";
+    const MQTT_TOPIC_COMANDI = "cabina/comandi";
+
+    const MQTT_URL = `wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`;
+
+    // ===================== ELEMENTI UI =====================
+    const connDot = document.getElementById("conn-dot");
+    const connText = document.getElementById("conn-text");
+    const cabinaStateEl = document.getElementById("cabina-state");
+    const setupTextEl = document.getElementById("setup-text");
+    const logBox = document.getElementById("log-box");
+    const btnOpen = document.getElementById("btn-open");
+    const btnClose = document.getElementById("btn-close");
+
+    function setConnStatus(status) {
+      // status: "connecting" | "connected" | "error"
+      connDot.classList.remove("dot-ok", "dot-error", "dot-warn");
+
+      if (status === "connecting") {
+        connText.textContent = "Connessione in corso...";
+        connDot.classList.add("dot-warn");
+        btnOpen.disabled = true;
+        btnClose.disabled = true;
+      } else if (status === "connected") {
+        connText.textContent = "Connesso a HiveMQ";
+        connDot.classList.add("dot-ok");
+        btnOpen.disabled = false;
+        btnClose.disabled = false;
+      } else {
+        connText.textContent = "Disconnesso";
+        connDot.classList.add("dot-error");
+        btnOpen.disabled = true;
+        btnClose.disabled = true;
+      }
+    }
+
+    function appendLog(msg) {
+      const line = document.createElement("div");
+      line.className = "log-line";
+      const ts = new Date().toLocaleTimeString();
+      line.textContent = `[${ts}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function updateCabinaUI(payload) {
+      const { inFaseDiSetup, cabinaAperta } = payload;
+
+      if (cabinaAperta) {
+        cabinaStateEl.textContent = "CABINA APERTA";
+        cabinaStateEl.classList.remove("cabina-closed");
+        cabinaStateEl.classList.add("cabina-open");
+      } else {
+        cabinaStateEl.textContent = "CABINA CHIUSA";
+        cabinaStateEl.classList.remove("cabina-open");
+        cabinaStateEl.classList.add("cabina-closed");
+      }
+
+      if (inFaseDiSetup) {
+        setupTextEl.textContent =
+          "Fase di SETUP: impostazione del codice segreto";
+        setupTextEl.classList.remove("setup-off");
+        setupTextEl.classList.add("setup-on");
+      } else {
+        setupTextEl.textContent = "Uso normale della cabina";
+        setupTextEl.classList.remove("setup-on");
+        setupTextEl.classList.add("setup-off");
+      }
+    }
+
+    // ===================== MQTT CLIENT =====================
+    const clientId =
+      "web-cabina-" + Math.random().toString(16).substring(2, 10);
+
+    appendLog(`ClientID: ${clientId}`);
+    appendLog(`Connessione a ${MQTT_URL} ...`);
+
+    setConnStatus("connecting");
+
+    const options = {
+      clientId,
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD,
+      clean: true,
+      reconnectPeriod: 2000,
+      connectTimeout: 30 * 1000,
+    };
+
+    const client = mqtt.connect(MQTT_URL, options);
+
+    // funzione per inviare comandi
+    function sendCommand(cmd) {
+      if (!client.connected) {
+      appendLog("Non connesso: impossibile inviare comando " + cmd);
+      return;
+    }
+    client.publish(MQTT_TOPIC_COMANDI, cmd);
+    appendLog("Comando inviato: " + cmd);
+    }
+
+    client.on("connect", function () {
+      setConnStatus("connected");
+      appendLog("Connesso al broker HiveMQ Cloud");
+      appendLog(`Mi iscrivo al topic: ${MQTT_TOPIC_STATO}`);
+      client.subscribe(MQTT_TOPIC_STATO, function (err) {
+        if (err) {
+          appendLog("Errore subscribe: " + err.message);
+        } else {
+          appendLog("Iscrizione OK");
+        }
+      });
+    });
+
+    client.on("reconnect", function () {
+      setConnStatus("connecting");
+      appendLog("Riconnessione in corso...");
+    });
+
+    client.on("close", function () {
+      setConnStatus("error");
+      appendLog("Connessione chiusa");
+    });
+
+    client.on("error", function (err) {
+      setConnStatus("error");
+      appendLog("Errore MQTT: " + err.message);
+    });
+
+    client.on("message", function (topic, message) {
+      appendLog(`Messaggio su ${topic}: ${message.toString()}`);
+
+      if (topic === MQTT_TOPIC_STATO) {
+        try {
+          const data = JSON.parse(message.toString());
+          updateCabinaUI(data);
+        } catch (e) {
+          appendLog("Errore parsing JSON: " + e.message);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

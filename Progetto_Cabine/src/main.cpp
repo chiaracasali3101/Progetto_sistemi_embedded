@@ -40,26 +40,33 @@ const char* password = "";
 const char* mqtt_broker = "9e575485d8be46f0b26fc67805967c19.s1.eu.hivemq.cloud";
 const int   mqtt_port   = 8883;
 
-// ⚠️ METTI QUI USERNAME E PASSWORD MQTT DI HIVEMQ CLOUD
+// USERNAME E PASSWORD MQTT DI HIVEMQ CLOUD
 const char* mqtt_user   = "ProgettoEmbedded";   
 const char* mqtt_pass   = "Password1";    
 
+// Topic MQTT
+const char* MQTT_TOPIC_STATO   = "cabina/stato";
+const char* MQTT_TOPIC_COMANDI = "cabina/comandi";
 
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 
-// ================== FUNZIONI CABINA ==================
+// Prototipo
+void pubblicaStato(const char* motivo);
 
+// ================== FUNZIONI CABINA ==================
 void chiudiCabina() {
   myServo.write(0);
   digitalWrite(PIN_LED_ROSSO, HIGH);
   digitalWrite(PIN_LED_VERDE, LOW);
+  pubblicaStato("chiudiCabina");
 }
 
 void apriCabina() {
   myServo.write(90);
   digitalWrite(PIN_LED_ROSSO, LOW);
   digitalWrite(PIN_LED_VERDE, HIGH);
+  pubblicaStato("apriCabina");
 }
 
 void feedbackPositivo() {
@@ -77,7 +84,6 @@ void feedbackNegativo() {
 }
 
 // ================== SUPPORTO MQTT ==================
-
 bool cabinaAperta() {
   return digitalRead(PIN_LED_VERDE) == HIGH;
 }
@@ -90,6 +96,24 @@ String creaPayloadStato() {
   return json;
 }
 
+void pubblicaStato(const char* motivo) {
+  if (!mqttClient.connected()) {
+    Serial.print("MQTT non connesso, impossibile pubblicare stato (");
+    Serial.print(motivo);
+    Serial.println(")");
+    return;
+  }
+  String payload = creaPayloadStato();
+  Serial.print("Pubblico stato (");
+  Serial.print(motivo);
+  Serial.print(") su ");
+  Serial.print(MQTT_TOPIC_STATO);
+  Serial.print(": ");
+  Serial.println(payload);
+
+  mqttClient.publish(MQTT_TOPIC_STATO, payload.c_str());
+}
+
 void mqttReconnect() {
   while (!mqttClient.connected()) {
     Serial.print("Connessione a HiveMQ Cloud...");
@@ -99,8 +123,18 @@ void mqttReconnect() {
 
     if (mqttClient.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println(" connesso!");
-      // Se vuoi ricevere comandi:
-      // mqttClient.subscribe("cabina/comandi");
+
+      // Sottoscrizione al topic comandi 
+      if (mqttClient.subscribe(MQTT_TOPIC_COMANDI)) {
+        Serial.print("Sottoscritto a ");
+        Serial.println(MQTT_TOPIC_COMANDI);
+      } else {
+        Serial.println("Errore subscribe al topic comandi");
+      }
+
+      // Pubblico stato immediatamente dopo la riconnessione
+      pubblicaStato("reconnect");
+
     } else {
       Serial.print(" fallita, rc=");
       Serial.print(mqttClient.state());
@@ -110,24 +144,35 @@ void mqttReconnect() {
   }
 }
 
-// callback opzionale per messaggi in ingresso (se in futuro vuoi comandi)
+// callback per messaggi in ingresso 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Messaggio arrivato su topic: ");
   Serial.println(topic);
 
+  // ricostruisco il payload in una String leggibile
   String msg;
   for (unsigned int i = 0; i < length; i++) {
     msg += (char)payload[i];
   }
+
   Serial.print("Payload: ");
   Serial.println(msg);
 
-  // Esempio: gestire comandi su "cabina/comandi"
-  // if (String(topic) == "cabina/comandi") { ... }
+  // Se il messaggio arriva dal topic dei comandi
+  if (String(topic) == MQTT_TOPIC_COMANDI) {
+    if (msg == "APRI") {
+      Serial.println("Comando remoto: APRI CABINA");
+      apriCabina();
+    } else if (msg == "CHIUDI") {
+      Serial.println("Comando remoto: CHIUDI CABINA");
+      chiudiCabina();
+    } else {
+      Serial.println("Comando remoto sconosciuto");
+    }
+  }
 }
 
 // ================== SETUP ==================
-
 void setup() {
   Serial.begin(115200);
   Serial.println("--- AVVIO CABINA ---");
@@ -138,13 +183,9 @@ void setup() {
   myServo.setPeriodHertz(50);
   myServo.attach(PIN_SERVO, 500, 2400);
 
-  chiudiCabina();
-
   digitalWrite(PIN_LED_VERDE, HIGH);
   delay(500);
   digitalWrite(PIN_LED_VERDE, LOW);
-
-  Serial.println("INSERISCI NUOVO CODICE (4 cifre) E PREMI #");
 
   // --- CONNESSIONE WIFI (Wokwi) ---
   WiFi.begin(ssid, password, 6); // canale 6 per Wokwi-GUEST
@@ -163,30 +204,32 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   // --- TLS + MQTT ---
-  espClient.setInsecure();
+  espClient.setInsecure();     // Disabilita la verifica del certificato (ok per test)
   mqttClient.setServer(mqtt_broker, mqtt_port);
   mqttClient.setCallback(mqttCallback);
 
+  // Connessione al broker MQTT
   mqttReconnect();
+
+  // imposto lo stato iniziale della cabina e lo pubblico
+  chiudiCabina(); // inizio con cabina chiusa 
+
+  Serial.println("INSERISCI NUOVO CODICE (4 cifre) E PREMI #");
 }
 
 // ================== LOOP ==================
-
 void loop() {
   if (!mqttClient.connected()) {
     mqttReconnect();
   }
   mqttClient.loop();
 
-  // Pubblica lo stato ogni 1000 ms
+  // Heartbeat: pubblica lo stato ogni 30 secondi (per sicurezza)
   static unsigned long lastPublish = 0;
   unsigned long now = millis();
-  if (now - lastPublish > 1000) {
+  if (now - lastPublish > 30000) {  
     lastPublish = now;
-    String payload = creaPayloadStato();
-    Serial.print("Pubblico su cabina/stato: ");
-    Serial.println(payload);
-    mqttClient.publish("cabina/stato", payload.c_str());
+    pubblicaStato("heartbeat");
   }
 
   // ----- LOGICA ORIGINALE DELLA CABINA -----
@@ -206,16 +249,19 @@ void loop() {
           Serial.println("PASSWORD SALVATA!");
           feedbackPositivo();
           chiudiCabina();
+          pubblicaStato("fine_setup");
         } else {
           Serial.println("ERRORE: Servono 4 numeri.");
           inputCorrente = "";
           feedbackNegativo();
+          pubblicaStato("errore_setup");
         }
       }
       else if (key == '*') {
         inputCorrente = "";
         Serial.println("Reset.");
         feedbackNegativo();
+        pubblicaStato("reset_setup");
       }
       else if (key >= '0' && key <= '9') {
         if (inputCorrente.length() < 4) {
@@ -230,10 +276,12 @@ void loop() {
         chiudiCabina();
         inputCorrente = "";
         Serial.println("CABINA CHIUSA!");
+        // chiudiCabina già chiama pubblicaStato()
       }
       else if (key == '#') {
         inputCorrente = "";
         Serial.println("Input resettato");
+        pubblicaStato("reset_codice");
       }
       else if (key >= '0' && key <= '9') {
         inputCorrente += key;
@@ -244,10 +292,12 @@ void loop() {
             apriCabina();
             Serial.println("CABINA APERTA!");
             inputCorrente = "";
+            // apriCabina già chiama pubblicaStato()
           } else {
             Serial.println("PASSWORD ERRATA");
             feedbackNegativo();
             inputCorrente = "";
+            pubblicaStato("password_errata");
           }
         }
       }
